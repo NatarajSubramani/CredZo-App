@@ -15,4 +15,4 @@ Open [http://localhost:3000](http://localhost:3000).
 
 The app is deployed automatically on push to `main` via GitHub Actions.
 
-Live site: `https://<your-username>.github.io/credzo-app/`
+Live site: `https://natarajsubramani.github.io/CredZo-App/`
