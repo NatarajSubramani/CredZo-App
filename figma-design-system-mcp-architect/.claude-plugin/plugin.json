@@ -1,0 +1,17 @@
+{
+  "name": "figma-design-system-mcp-architect",
+  "version": "0.1.0",
+  "description": "Converts approved CredZo UI mockups into fully structured Figma production files using MCP integration, atomic design systems, design tokens, and professional fintech naming conventions.",
+  "author": {
+    "name": "CredZo Design System"
+  },
+  "keywords": [
+    "figma",
+    "design-system",
+    "fintech",
+    "mcp",
+    "tokens",
+    "atomic-design",
+    "credzo"
+  ]
+}

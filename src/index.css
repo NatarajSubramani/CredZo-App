@@ -1,0 +1,170 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  background: #0C1E48;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Keyframe animations ── */
+@keyframes czBlink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+@keyframes czSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes czPulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50%      { opacity: 0.15; transform: scale(1.35); }
+}
+
+@keyframes czSlideUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes czSlideInRight {
+  from { opacity: 0; transform: translateX(48px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes czSlideInLeft {
+  from { opacity: 0; transform: translateX(-48px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes czFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes czShimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+@keyframes czScanLine {
+  0%   { top: 20%; }
+  50%  { top: 80%; }
+  100% { top: 20%; }
+}
+
+@keyframes czProgressFill {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+
+@keyframes czCountUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes czConfetti {
+  0%   { opacity: 1; transform: translateY(0) rotate(0deg); }
+  100% { opacity: 0; transform: translateY(-60px) rotate(180deg); }
+}
+
+@keyframes czRipple {
+  0%   { transform: scale(0); opacity: 0.35; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+@keyframes czSuccessPop {
+  0%   { transform: scale(0.5); opacity: 0; }
+  60%  { transform: scale(1.12); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes czHeartbeat {
+  0%, 100% { transform: scale(1); }
+  14%      { transform: scale(1.06); }
+  28%      { transform: scale(1); }
+  42%      { transform: scale(1.04); }
+  70%      { transform: scale(1); }
+}
+
+@keyframes czAITyping {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%           { transform: translateY(-4px); }
+}
+
+/* ── Screen transition helpers ── */
+.screen-enter {
+  animation: czSlideInRight 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.screen-enter-back {
+  animation: czSlideInLeft 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.screen-fade {
+  animation: czFadeIn 0.28s ease both;
+}
+
+.overlay-enter {
+  animation: czSlideUp 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Scrollbar hiding ── */
+.scroll-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Button press feedback ── */
+.pressable {
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+  user-select: none;
+}
+.pressable:active {
+  transform: scale(0.97);
+  opacity: 0.88;
+}
+
+/* ── Accessibility: global focus-visible ring ── */
+/* Keyboard users get a clear ring; mouse/touch users see nothing */
+:focus-visible {
+  outline: 3px solid #0772A0;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Inputs use their own focused border state — suppress duplicate ring */
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+/* Buttons inside the phone frame */
+button:focus-visible {
+  outline: 3px solid #0772A0;
+  outline-offset: 2px;
+}
+
+/* ── Shimmer skeleton ── */
+.shimmer {
+  background: linear-gradient(90deg, #EBF0FA 25%, #F5F8FF 50%, #EBF0FA 75%);
+  background-size: 800px 100%;
+  animation: czShimmer 1.6s infinite linear;
+}

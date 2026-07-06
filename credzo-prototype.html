@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>CredZo — Instant UPI Credit Line Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#0C1E48;font-family:'Plus Jakarta Sans',-apple-system,sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+#root{height:100%;display:flex;align-items:center;justify-content:center;min-height:100vh}
+input{font-family:inherit}button{font-family:inherit}
+@keyframes czBlink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes czSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes czPulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:.15;transform:scale(1.35)}}
+@keyframes czSlideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes czSlideInRight{from{opacity:0;transform:translateX(48px)}to{opacity:1;transform:translateX(0)}}
+@keyframes czSlideInLeft{from{opacity:0;transform:translateX(-48px)}to{opacity:1;transform:translateX(0)}}
+@keyframes czFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes czScanLine{0%{top:20%}50%{top:80%}100%{top:20%}}
+@keyframes czProgressFill{from{width:0%}to{width:100%}}
+@keyframes czSuccessPop{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+@keyframes czCountUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.screen-enter{animation:czSlideInRight .32s cubic-bezier(.22,1,.36,1) both}
+.screen-enter-back{animation:czSlideInLeft .32s cubic-bezier(.22,1,.36,1) both}
+.screen-fade{animation:czFadeIn .28s ease both}
+.overlay-enter{animation:czSlideUp .36s cubic-bezier(.22,1,.36,1) both}
+.scroll-hidden{scrollbar-width:none;-ms-overflow-style:none}
+.scroll-hidden::-webkit-scrollbar{display:none}
+.pressable{cursor:pointer;transition:transform .12s ease,opacity .12s ease;user-select:none}
+.pressable:active{transform:scale(.97);opacity:.88}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+
+/* ─── Design Tokens ───────────────────────────────── */
+const CZ = {
+  navy:'#0C1E48',navyDark:'#091640',navyMid:'#1A4B9E',navyLight:'#EAF0FF',navyBorder:'#C0D0F0',
+  teal:'#0891B2',tealDark:'#0E6E8C',tealSurface:'#E0F5FA',tealBorder:'#9FD8EA',
+  bg:'#F2F5FC',card:'#FFFFFF',subtle:'#EBF0FA',border:'#DCE4F4',
+  text:'#0E1C3C',textMd:'#3A5080',muted:'#8094BC',
+  success:'#059669',successBg:'#ECFDF5',successBdr:'#6EE7B7',
+  warning:'#D07A06',warningBg:'#FFFBEB',warningBdr:'#FCD34D',
+  error:'#DC2B2B',errorBg:'#FEF2F2',errorBdr:'#FCA5A5',
+  font:"'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif",
+  heroGrad:'linear-gradient(160deg,#091640 0%,#0F2660 55%,#1B3F8A 100%)',
+  aiGrad:'linear-gradient(135deg,#0EA5C9 0%,#1A4B9E 100%)',
+  cardGrad:'linear-gradient(135deg,#0C1E48 0%,#1A3F8A 100%)',
+  shadowSm:'0 1px 4px rgba(12,30,72,.08)',shadowMd:'0 2px 16px rgba(12,30,72,.1)',
+  shadowBtn:'0 4px 22px rgba(12,30,72,.30)',
+};
+const SW=390,SH=844;
+
+/* ─── Navigation ──────────────────────────────────── */
+const NavCtx = React.createContext(null);
+const SCREENS = {
+  WELCOME:'welcome',SIGN_IN:'sign_in',SIGN_UP:'sign_up',OTP_VERIFY:'otp_verify',
+  ELIGIBILITY:'eligibility',AADHAAR_OTP:'aadhaar_otp',PAN_CAPTURE:'pan_capture',
+  PROCESSING:'processing',CREDIT_REVEAL:'credit_reveal',KFS_REVIEW:'kfs_review',
+  CREDIT_DRAW:'credit_draw',DASHBOARD:'dashboard',
+  PARTIAL:'partial',REJECTION:'rejection',AI_HELP:'ai_help',
+};
+function NavProvider({children}){
+  const [cur,setCur]=React.useState(SCREENS.WELCOME);
+  const [hist,setHist]=React.useState([]);
+  const [dir,setDir]=React.useState('forward');
+  const [overlay,setOverlay]=React.useState(null);
+  const ORDER=[SCREENS.WELCOME,SCREENS.SIGN_IN,SCREENS.SIGN_UP,SCREENS.OTP_VERIFY,
+    SCREENS.ELIGIBILITY,SCREENS.AADHAAR_OTP,SCREENS.PAN_CAPTURE,SCREENS.PROCESSING,
+    SCREENS.CREDIT_REVEAL,SCREENS.KFS_REVIEW,SCREENS.CREDIT_DRAW,SCREENS.DASHBOARD,
+    SCREENS.PARTIAL,SCREENS.REJECTION];
+  const navigate=React.useCallback((s,opts={})=>{
+    if(opts.overlay){setOverlay(s);return;}
+    const fi=ORDER.indexOf(cur),ti=ORDER.indexOf(s);
+    setDir(ti>=fi?'forward':'back');
+    setHist(h=>[...h,cur]);setCur(s);
+  },[cur]);
+  const goBack=React.useCallback(()=>{
+    if(overlay){setOverlay(null);return;}
+    if(!hist.length)return;
+    setDir('back');const p=hist[hist.length-1];
+    setHist(h=>h.slice(0,-1));setCur(p);
+  },[hist,overlay]);
+  const dismissOverlay=React.useCallback(()=>setOverlay(null),[]);
+  return <NavCtx.Provider value={{current:cur,navigate,goBack,overlay,dismissOverlay,dir}}>{children}</NavCtx.Provider>;
+}
+function useNav(){return React.useContext(NavCtx);}
+
+/* ─── Base Components ─────────────────────────────── */
+function Screen({children,style,bg,className}){
+  return <div className={`scroll-hidden ${className||''}`} style={{width:SW,height:SH,background:bg||CZ.bg,fontFamily:CZ.font,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',WebkitFontSmoothing:'antialiased',...style}}>{children}</div>;
+}
+function StatusBar({dark}){
+  const fg=dark?'rgba(255,255,255,.9)':CZ.text;
+  return <div style={{height:44,flexShrink:0,display:'flex',alignItems:'center',padding:'0 22px'}}>
+    <span style={{fontSize:15,fontWeight:700,color:fg,letterSpacing:-.3}}>9:41</span>
+    <div style={{flex:1}}/>
+    <div style={{display:'flex',alignItems:'center',gap:5}}>
+      <svg width="17" height="12" viewBox="0 0 17 12" fill={fg}><rect x="0" y="8" width="3" height="4" rx=".7" opacity=".35"/><rect x="4.5" y="5.5" width="3" height="6.5" rx=".7" opacity=".6"/><rect x="9" y="2.5" width="3" height="9.5" rx=".7" opacity=".8"/><rect x="13.5" y="0" width="3" height="12" rx=".7"/></svg>
+      <svg width="26" height="12" viewBox="0 0 26 12" fill="none"><rect x=".5" y="1" width="21" height="10" rx="3.2" stroke={fg} strokeOpacity=".4" strokeWidth="1"/><rect x="2" y="2.5" width="15" height="7" rx="2" fill={fg}/><path d="M22.5 4.5v3c1.2-.5 1.2-2.5 0-3z" fill={fg} opacity=".4"/></svg>
+    </div>
+  </div>;
+}
+function HomeIndicator({dark}){
+  return <div style={{padding:'6px 0 10px',display:'flex',justifyContent:'center',flexShrink:0}}>
+    <div style={{width:134,height:5,borderRadius:3,background:dark?'rgba(255,255,255,.28)':CZ.border}}/>
+  </div>;
+}
+function Logo({dark,size='md'}){
+  const s={sm:{box:28,icon:13,text:18},md:{box:36,icon:17,text:22},lg:{box:44,icon:21,text:28}}[size];
+  return <div style={{display:'flex',alignItems:'center',gap:8}}>
+    <div style={{width:s.box,height:s.box,borderRadius:Math.round(s.box*.28),background:dark?'rgba(255,255,255,.12)':CZ.aiGrad,border:`1px solid ${dark?'rgba(255,255,255,.2)':'transparent'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+      <svg width={s.icon} height={s.icon} viewBox="0 0 18 18" fill="none"><path d="M4 4H14L4 14H14" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+    </div>
+    <span style={{fontSize:s.text,fontWeight:800,color:dark?'white':CZ.navy,letterSpacing:-.5}}>CredZo</span>
+  </div>;
+}
+function NavBar({step,total,title,dark,onBack,onHelp}){
+  const fg=dark?'rgba(255,255,255,.9)':CZ.text,dim=dark?'rgba(255,255,255,.5)':CZ.muted;
+  const Btn=({ch,onClick})=><div className="pressable" onClick={onClick} style={{width:40,height:40,borderRadius:'50%',background:dark?'rgba(255,255,255,.1)':CZ.card,border:`1px solid ${dark?'rgba(255,255,255,.15)':CZ.border}`,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0,boxShadow:dark?'none':CZ.shadowSm}}>{ch}</div>;
+  return <div style={{display:'flex',alignItems:'center',padding:'0 20px 12px',gap:8,flexShrink:0}}>
+    <Btn onClick={onBack} ch={<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M11.5 4.5L7 9L11.5 13.5" stroke={fg} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}/>
+    <div style={{flex:1,display:'flex',justifyContent:'center'}}>
+      {step?<div style={{background:dark?'rgba(255,255,255,.1)':CZ.navyLight,border:`1px solid ${dark?'rgba(255,255,255,.12)':CZ.navyBorder}`,borderRadius:20,padding:'5px 16px',fontSize:13,fontWeight:600,color:dark?'rgba(255,255,255,.85)':CZ.navyMid}}>Step {step} of {total}</div>
+      :title?<span style={{fontSize:16,fontWeight:700,color:fg}}>{title}</span>:null}
+    </div>
+    <Btn onClick={onHelp} ch={<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke={dim} strokeWidth="1.5"/><path d="M7.2 7c0-1 .8-1.8 1.8-1.8s1.8.8 1.8 1.8c0 .9-.8 1.5-1.8 1.8v.6" stroke={dim} strokeWidth="1.5" strokeLinecap="round"/><circle cx="9" cy="13" r=".8" fill={dim}/></svg>}/>
+  </div>;
+}
+function Stepper({active}){
+  const steps=['Eligibility','Verify ID','Your Limit'];
+  return <div style={{display:'flex',alignItems:'flex-start',padding:'0 28px 16px',flexShrink:0}}>
+    {steps.map((s,i)=>{const n=i+1,done=n<active,curr=n===active,future=n>active;return(
+      <React.Fragment key={s}>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5}}>
+          <div style={{width:28,height:28,borderRadius:'50%',background:done?CZ.success:curr?CZ.navy:'transparent',border:`2px solid ${future?CZ.border:done?CZ.success:CZ.navy}`,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:curr?`0 0 0 4px ${CZ.navyLight}`:'none',transition:'all .3s'}}>
+            {done?<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6L5 8.5L9.5 4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            :curr?<div style={{width:8,height:8,borderRadius:'50%',background:'white'}}/>:null}
+          </div>
+          <span style={{fontSize:11,fontWeight:(done||curr)?600:400,color:future?CZ.muted:done?CZ.success:CZ.navy,whiteSpace:'nowrap'}}>{s}</span>
+        </div>
+        {i<2&&<div style={{flex:1,height:2,background:n<active?CZ.success:CZ.border,marginBottom:22,margin:'13px 4px 0',borderRadius:1,transition:'background .4s'}}/>}
+      </React.Fragment>
+    );})}
+  </div>;
+}
+function AICard({message,link,style}){
+  return <div style={{margin:'0 20px',background:CZ.tealSurface,borderRadius:16,padding:14,display:'flex',gap:12,alignItems:'flex-start',border:`1px solid ${CZ.tealBorder}`,flexShrink:0,boxShadow:'0 2px 10px rgba(8,145,178,.08)',...style}}>
+    <div style={{width:36,height:36,borderRadius:'50%',background:CZ.aiGrad,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 10px rgba(8,145,178,.32)',border:'2px solid rgba(255,255,255,.5)'}}>
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5L8.7 5.5H13L9.6 7.9L10.8 12L7 9.6L3.2 12L4.4 7.9L1 5.5H5.3L7 1.5Z" fill="white" opacity=".95"/></svg>
+    </div>
+    <div style={{flex:1}}>
+      <div style={{fontSize:10.5,fontWeight:700,color:CZ.teal,letterSpacing:.6,marginBottom:4,textTransform:'uppercase'}}>CredZo AI</div>
+      <p style={{margin:0,fontSize:13.5,color:'#0C3540',lineHeight:1.6}}>{message}</p>
+      {link&&<div style={{marginTop:8}}><span style={{fontSize:13,color:CZ.teal,fontWeight:700,cursor:'pointer'}}>{link} →</span></div>}
+    </div>
+  </div>;
+}
+function AIBubble({message,style}){
+  return <div style={{margin:'0 20px',background:CZ.tealSurface,borderRadius:24,padding:'9px 14px',display:'flex',gap:10,alignItems:'center',border:`1px solid ${CZ.tealBorder}`,flexShrink:0,...style}}>
+    <div style={{width:26,height:26,borderRadius:'50%',background:CZ.aiGrad,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M5.5 1L6.8 4.3H10.5L7.6 6.3L8.6 9.7L5.5 7.7L2.4 9.7L3.4 6.3L.5 4.3H4.2L5.5 1Z" fill="white"/></svg>
+    </div>
+    <span style={{fontSize:12.5,color:'#0C3540',lineHeight:1.45}}>{message}</span>
+  </div>;
+}
+function Button({label,disabled,variant,onClick,style,loading}){
+  const [p,setP]=React.useState(false);
+  const isPrimary=!variant||variant==='primary',isOutline=variant==='outline';
+  return <button onClick={!disabled&&!loading?onClick:undefined} onMouseDown={()=>!disabled&&setP(true)} onMouseUp={()=>setP(false)} onMouseLeave={()=>setP(false)} onTouchStart={()=>!disabled&&setP(true)} onTouchEnd={()=>setP(false)} disabled={disabled} style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,width:'100%',height:56,background:disabled?'#E2E8F5':isPrimary?CZ.navy:'transparent',color:disabled?CZ.muted:isPrimary?'white':CZ.navy,border:isOutline?`2px solid ${CZ.navy}`:'none',borderRadius:28,fontSize:16,fontFamily:CZ.font,fontWeight:700,cursor:disabled||loading?'not-allowed':'pointer',boxShadow:(!disabled&&isPrimary)?CZ.shadowBtn:'none',transition:'transform .12s,opacity .12s',transform:p&&!disabled?'scale(.97)':'scale(1)',opacity:p&&!disabled?.9:1,...style}}>
+    {loading?<div style={{width:20,height:20,borderRadius:'50%',border:'2px solid white',borderTopColor:'transparent',animation:'czSpin .8s linear infinite'}}/>:label}
+  </button>;
+}
+function Input({label,placeholder,value,onChange,type='text',prefix,suffix,error,hint,style}){
+  const [focused,setFocused]=React.useState(false);
+  return <div style={style}>
+    {label&&<div style={{fontSize:13,fontWeight:600,color:CZ.textMd,marginBottom:6}}>{label}</div>}
+    <div style={{display:'flex',alignItems:'center',background:CZ.card,border:`1.5px solid ${error?CZ.errorBdr:focused?CZ.navyMid:CZ.border}`,borderRadius:14,padding:'0 16px',height:52,gap:10,boxShadow:focused?`0 0 0 3px ${CZ.navyLight}`:CZ.shadowSm,transition:'border-color .18s,box-shadow .18s'}}>
+      {prefix&&<><span style={{fontSize:14,fontWeight:600,color:CZ.textMd,flexShrink:0}}>{prefix}</span><div style={{width:1,height:20,background:CZ.border,flexShrink:0}}/></>}
+      <input type={type} value={value||''} onChange={e=>onChange?.(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder={placeholder} style={{flex:1,fontSize:15,color:CZ.text,fontFamily:CZ.font,background:'transparent',border:'none',outline:'none',padding:0}}/>
+      {suffix&&<span style={{fontSize:18,color:CZ.muted,flexShrink:0,cursor:'pointer'}}>{suffix}</span>}
+    </div>
+    {hint&&!error&&<div style={{fontSize:12,color:CZ.muted,marginTop:5}}>{hint}</div>}
+    {error&&<div style={{fontSize:12,color:CZ.error,marginTop:5}}>{error}</div>}
+  </div>;
+}
+function OTPBoxes({value='',onChange,total=6}){
+  const refs=React.useRef([]);
+  React.useEffect(()=>{refs.current[Math.min(value.length,total-1)]?.focus();},[]);
+  const onKD=(e,i)=>{if(e.key==='Backspace'){if(value[i]){onChange?.(value.slice(0,i)+value.slice(i+1));}else if(i>0){refs.current[i-1]?.focus();onChange?.(value.slice(0,i-1)+value.slice(i));}}};
+  const onCh=(e,i)=>{const ch=e.target.value.replace(/\D/g,'').slice(-1);if(!ch)return;const arr=value.split('');arr[i]=ch;onChange?.(arr.slice(0,total).join(''));if(i<total-1)refs.current[i+1]?.focus();};
+  const onPaste=(e)=>{e.preventDefault();const p=e.clipboardData.getData('text').replace(/\D/g,'').slice(0,total);onChange?.(p);refs.current[Math.min(p.length,total-1)]?.focus();};
+  return <div style={{display:'flex',gap:8,justifyContent:'center'}}>
+    {Array.from({length:total}).map((_,i)=>{
+      const filled=i<value.length,active=i===value.length&&i<total;
+      return <div key={i} style={{position:'relative'}}>
+        <input ref={el=>refs.current[i]=el} type="tel" inputMode="numeric" maxLength={1} value={value[i]||''} onChange={e=>onCh(e,i)} onKeyDown={e=>onKD(e,i)} onPaste={onPaste} style={{width:46,height:56,borderRadius:12,border:`2px solid ${active?CZ.navy:filled?CZ.navyMid:CZ.border}`,background:(active||filled)?CZ.navyLight:CZ.card,fontSize:22,color:CZ.navy,fontWeight:700,textAlign:'center',fontFamily:CZ.font,outline:'none',cursor:'pointer',boxShadow:active?`0 0 0 4px ${CZ.navyLight}`:'none',transition:'border-color .15s,box-shadow .15s',caretColor:'transparent'}}/>
+        {active&&!value[i]&&<div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:2,height:22,background:CZ.navy,borderRadius:1,animation:'czBlink 1s step-end infinite',pointerEvents:'none'}}/>}
+      </div>;
+    })}
+  </div>;
+}
+function ProgressRing({pct,size=88,color,trackColor}){
+  const sw=6,r=size/2-sw,circ=2*Math.PI*r;
+  return <svg width={size} height={size} style={{display:'block'}}>
+    <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={trackColor||CZ.border} strokeWidth={sw}/>
+    <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color||CZ.navy} strokeWidth={sw} strokeDasharray={circ} strokeDashoffset={circ*(1-Math.min(pct,1))} strokeLinecap="round" transform={`rotate(-90 ${size/2} ${size/2})`} style={{transition:'stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)'}}/>
+  </svg>;
+}
+function TabBar({active=0,onTab}){
+  const tabs=[{label:'Dashboard',icon:(a)=><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="8.5" height="8.5" rx="2.5" fill={a?CZ.navy:CZ.muted} opacity={a?1:.45}/><rect x="11.5" y="2" width="8.5" height="8.5" rx="2.5" fill={a?CZ.navy:CZ.muted} opacity={a?.45:.25}/><rect x="2" y="11.5" width="8.5" height="8.5" rx="2.5" fill={a?CZ.navy:CZ.muted} opacity={a?.45:.25}/><rect x="11.5" y="11.5" width="8.5" height="8.5" rx="2.5" fill={a?CZ.navy:CZ.muted} opacity={a?1:.45}/></svg>},{label:'History',icon:(a)=><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="8" stroke={a?CZ.navy:CZ.muted} strokeWidth="1.6" opacity={a?1:.5}/><path d="M11 7v4.4L13.8 13" stroke={a?CZ.navy:CZ.muted} strokeWidth="1.6" strokeLinecap="round" opacity={a?1:.5}/></svg>},{label:'Offers',icon:(a)=><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 2.5l2.2 5.5H19l-4.5 3.2 1.8 5.5L11 13.8 5.7 16.7l1.8-5.5L3 8l5.8-.1z" fill={a?CZ.navy:'none'} stroke={a?CZ.navy:CZ.muted} strokeWidth="1.5" strokeLinejoin="round" opacity={a?1:.5}/></svg>},{label:'Profile',icon:(a)=><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="8" r="4" stroke={a?CZ.navy:CZ.muted} strokeWidth="1.6" opacity={a?1:.5}/><path d="M3 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke={a?CZ.navy:CZ.muted} strokeWidth="1.6" strokeLinecap="round" opacity={a?1:.5}/></svg>}];
+  return <div style={{display:'flex',background:CZ.card,borderTop:`1px solid ${CZ.border}`,flexShrink:0}}>
+    {tabs.map((t,i)=><div key={t.label} className="pressable" onClick={()=>onTab?.(i)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',padding:'10px 0 6px',gap:3,cursor:'pointer'}}>
+      {t.icon(i===active)}<span style={{fontSize:10.5,fontWeight:i===active?700:400,color:i===active?CZ.navy:CZ.muted}}>{t.label}</span>
+    </div>)}
+  </div>;
+}
+function Card({children,style}){
+  return <div style={{background:CZ.card,borderRadius:20,border:`1px solid ${CZ.border}`,boxShadow:CZ.shadowMd,...style}}>{children}</div>;
+}
+function TrustPill({children,variant}){
+  const ok=variant==='success';
+  return <div style={{display:'inline-flex',alignItems:'center',padding:'6px 12px',borderRadius:24,background:ok?CZ.successBg:CZ.card,border:`1px solid ${ok?CZ.successBdr:CZ.border}`,fontSize:12,fontWeight:ok?600:500,color:ok?CZ.success:CZ.textMd,whiteSpace:'nowrap'}}>{children}</div>;
+}
+function Divider({label}){
+  return <div style={{display:'flex',alignItems:'center',gap:12}}>
+    <div style={{flex:1,height:1,background:CZ.border}}/>
+    {label&&<><span style={{fontSize:12,color:CZ.muted,fontWeight:500}}>{label}</span><div style={{flex:1,height:1,background:CZ.border}}/></>}
+  </div>;
+}
+
+/* ─── Auth Screens ────────────────────────────────── */
+function SignInScreen(){
+  const {navigate}=useNav();
+  const [phone,setPhone]=React.useState('');
+  const [pass,setPass]=React.useState('');
+  const [loading,setLoading]=React.useState(false);
+  const valid=phone.length>=10&&pass.length>=4;
+  return <Screen bg={CZ.heroGrad} className="screen-enter">
+    <StatusBar dark/>
+    <div style={{padding:'8px 28px 36px',flexShrink:0,position:'relative',overflow:'hidden'}}>
+      <div style={{position:'absolute',top:-60,right:-60,width:220,height:220,borderRadius:'50%',background:'radial-gradient(circle,rgba(14,165,201,.18) 0%,transparent 70%)',pointerEvents:'none'}}/>
+      <Logo dark size="md"/>
+      <div style={{marginTop:36}}>
+        <h1 style={{fontSize:32,fontWeight:800,color:'white',margin:'0 0 8px',letterSpacing:-.7,lineHeight:1.15}}>Welcome back.</h1>
+        <p style={{fontSize:15,color:'rgba(255,255,255,.55)',margin:0,lineHeight:1.55}}>Sign in to access your credit line.</p>
+      </div>
+    </div>
+    <div style={{flex:1,background:CZ.card,borderRadius:'28px 28px 0 0',boxShadow:'0 -8px 40px rgba(9,22,64,.28)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      <div style={{display:'flex',justifyContent:'center',padding:'12px 0 4px'}}><div style={{width:40,height:4,borderRadius:2,background:CZ.border}}/></div>
+      <div className="scroll-hidden" style={{flex:1,padding:'8px 24px 0',display:'flex',flexDirection:'column',gap:14,overflowY:'auto'}}>
+        <div style={{fontSize:20,fontWeight:800,color:CZ.text,letterSpacing:-.4}}>Sign in to CredZo</div>
+        <Input label="Mobile number" placeholder="98765 43210" prefix="+91" value={phone} onChange={setPhone} type="tel"/>
+        <Input label="Password" placeholder="Enter your password" type="password" value={pass} onChange={setPass}/>
+        <Button label="Sign in →" disabled={!valid} loading={loading} onClick={()=>{setLoading(true);setTimeout(()=>{setLoading(false);navigate(SCREENS.DASHBOARD)},1400)}}/>
+        <Divider label="or continue with"/>
+        <div style={{display:'flex',gap:10}}>
+          {['Face ID','Google'].map(l=><div key={l} className="pressable" style={{flex:1,height:52,borderRadius:14,border:`1.5px solid ${CZ.border}`,background:CZ.subtle,display:'flex',alignItems:'center',justifyContent:'center',gap:8,cursor:'pointer'}}><span style={{fontSize:13,fontWeight:600,color:CZ.textMd}}>{l==='Face ID'?'👤 ':'🌐 '}{l}</span></div>)}
+        </div>
+      </div>
+      <div style={{padding:'12px 24px 4px',textAlign:'center'}}>
+        <span style={{fontSize:14,color:CZ.muted}}>New to CredZo? </span>
+        <span className="pressable" onClick={()=>navigate(SCREENS.SIGN_UP)} style={{fontSize:14,color:CZ.navyMid,fontWeight:700,cursor:'pointer'}}>Create account →</span>
+      </div>
+      <div style={{padding:'0 24px 4px',textAlign:'center'}}><span style={{fontSize:10.5,color:CZ.muted}}>🔒 256-bit SSL · RBI Registered NBFC</span></div>
+      <HomeIndicator/>
+    </div>
+  </Screen>;
+}
+function SignUpScreen(){
+  const {navigate,goBack}=useNav();
+  const [name,setName]=React.useState('');
+  const [phone,setPhone]=React.useState('');
+  const [agreed,setAgreed]=React.useState(false);
+  const [loading,setLoading]=React.useState(false);
+  const valid=name.trim()&&phone.length>=10&&agreed;
+  return <Screen bg={CZ.heroGrad} className="screen-enter">
+    <StatusBar dark/>
+    <div style={{padding:'4px 24px 28px',flexShrink:0,position:'relative',overflow:'hidden'}}>
+      <div style={{position:'absolute',top:-80,left:-40,width:260,height:260,borderRadius:'50%',background:'radial-gradient(circle,rgba(14,165,201,.12) 0%,transparent 65%)',pointerEvents:'none'}}/>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:28}}>
+        <div className="pressable" onClick={goBack} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,.1)',border:'1px solid rgba(255,255,255,.15)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M11.5 4.5L7 9L11.5 13.5" stroke="rgba(255,255,255,.85)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </div>
+        <Logo dark size="sm"/>
+      </div>
+      <h1 style={{fontSize:28,fontWeight:800,color:'white',margin:'0 0 8px',letterSpacing:-.5}}>Create your account.</h1>
+      <p style={{fontSize:14,color:'rgba(255,255,255,.55)',margin:'0 0 12px'}}>Join 2 lakh+ users who access credit in minutes.</p>
+    </div>
+    <div style={{flex:1,background:CZ.card,borderRadius:'28px 28px 0 0',boxShadow:'0 -8px 40px rgba(9,22,64,.28)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      <div style={{display:'flex',justifyContent:'center',padding:'12px 0 4px'}}><div style={{width:40,height:4,borderRadius:2,background:CZ.border}}/></div>
+      <div className="scroll-hidden" style={{flex:1,padding:'8px 24px 0',display:'flex',flexDirection:'column',gap:14,overflowY:'auto'}}>
+        <div style={{fontSize:20,fontWeight:800,color:CZ.text,letterSpacing:-.4}}>Let's get started</div>
+        <Input label="Full name" placeholder="Arun Sharma" value={name} onChange={setName}/>
+        <Input label="Mobile number" placeholder="98765 43210" prefix="+91" value={phone} onChange={setPhone} type="tel" hint="We'll send an OTP to verify"/>
+        <Input label="Email (optional)" placeholder="arun@example.com" type="email"/>
+        <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+          <div className="pressable" onClick={()=>setAgreed(v=>!v)} style={{width:20,height:20,borderRadius:5,flexShrink:0,marginTop:1,background:agreed?CZ.navy:'white',border:`2px solid ${agreed?CZ.navy:CZ.border}`,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',transition:'all .2s'}}>
+            {agreed&&<svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2 5.5L4.5 8L9 3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          </div>
+          <p style={{fontSize:12.5,color:CZ.textMd,lineHeight:1.55,margin:0}}>I agree to the <span style={{color:CZ.navyMid,fontWeight:600}}>Terms of Service</span> and <span style={{color:CZ.navyMid,fontWeight:600}}>Privacy Policy</span>. I consent to credit assessment.</p>
+        </div>
+        <Button label="Send OTP →" disabled={!valid} loading={loading} onClick={()=>{setLoading(true);setTimeout(()=>{setLoading(false);navigate(SCREENS.OTP_VERIFY)},1200)}}/>
+        <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap',paddingBottom:4}}>
+          {['🔒 Data encrypted','✦ Soft check','⚡ 2-min'].map(t=><TrustPill key={t}>{t}</TrustPill>)}
+        </div>
+      </div>
+      <div style={{padding:'8px 24px 4px',textAlign:'center'}}>
+        <span style={{fontSize:14,color:CZ.muted}}>Already a member? </span>
+        <span className="pressable" onClick={()=>navigate(SCREENS.SIGN_IN)} style={{fontSize:14,color:CZ.navyMid,fontWeight:700,cursor:'pointer'}}>Sign in →</span>
+      </div>
+      <HomeIndicator/>
+    </div>
+  </Screen>;
+}
+
+/* ─── Onboarding Screens ──────────────────────────── */
+function WelcomeScreen(){
+  const {navigate}=useNav();
+  return <Screen bg={CZ.heroGrad} className="screen-fade">
+    <StatusBar dark/>
+    <div style={{flex:1,display:'flex',flexDirection:'column',padding:'8px 28px 32px',position:'relative',overflow:'hidden'}}>
+      <svg style={{position:'absolute',inset:0,opacity:.04,pointerEvents:'none'}} width="390" height="500">{Array.from({length:10}).map((_,r)=>Array.from({length:14}).map((_,c)=><circle key={`${r}-${c}`} cx={c*30+15} cy={r*34+17} r="2" fill="white"/>))}</svg>
+      <div style={{position:'absolute',bottom:-40,left:-60,width:280,height:280,borderRadius:'50%',background:'radial-gradient(circle,rgba(14,165,201,.15) 0%,transparent 65%)',pointerEvents:'none'}}/>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+        <Logo dark size="md"/>
+        <div style={{display:'flex',alignItems:'center',gap:5,background:'rgba(255,255,255,.1)',border:'1px solid rgba(255,255,255,.15)',borderRadius:20,padding:'5px 10px'}}>
+          <span style={{fontSize:10.5,color:'rgba(255,255,255,.7)',fontWeight:500}}>🛡️ RBI Registered</span>
+        </div>
+      </div>
+      <div style={{display:'flex',gap:6,marginTop:16,marginBottom:'auto'}}>
+        {['EN','हिंदी','தமிழ்'].map((l,i)=><div key={l} className="pressable" style={{padding:'5px 12px',borderRadius:16,background:i===0?'rgba(255,255,255,.18)':'transparent',color:i===0?'white':'rgba(255,255,255,.45)',border:`1px solid ${i===0?'rgba(255,255,255,.25)':'rgba(255,255,255,.12)'}`,fontSize:12.5,fontWeight:i===0?700:400,cursor:'pointer'}}>{l}</div>)}
+      </div>
+      <div style={{marginTop:28}}>
+        <h1 style={{fontSize:36,fontWeight:800,color:'white',margin:'0 0 12px',letterSpacing:-.8,lineHeight:1.15}}>Credit that works<br/>as fast as you do.</h1>
+        <p style={{fontSize:16,color:'rgba(255,255,255,.6)',margin:0,lineHeight:1.6}}>Check your eligibility in under 2 minutes.<br/>No commitment required.</p>
+      </div>
+      <div style={{display:'flex',gap:16,marginTop:24}}>
+        {[{icon:'⚡',val:'2 min',desc:'Eligibility'},{icon:'✦',val:'₹75K',desc:'Credit limit'},{icon:'🔒',val:'0',desc:'Hidden fees'}].map(f=><div key={f.desc} style={{flex:1}}><div style={{fontSize:17,marginBottom:2}}>{f.icon}</div><div style={{fontSize:18,fontWeight:800,color:'white',lineHeight:1}}>{f.val}</div><div style={{fontSize:11,color:'rgba(255,255,255,.5)',marginTop:2}}>{f.desc}</div></div>)}
+      </div>
+    </div>
+    <div style={{background:CZ.card,borderRadius:'28px 28px 0 0',padding:'20px 24px 0',boxShadow:'0 -8px 40px rgba(9,22,64,.28)',flexShrink:0}}>
+      <div style={{display:'flex',justifyContent:'center',marginBottom:16}}><div style={{width:40,height:4,borderRadius:2,background:CZ.border}}/></div>
+      <Button label="Check my eligibility →" onClick={()=>navigate(SCREENS.SIGN_UP)}/>
+      <div style={{textAlign:'center',marginTop:10}}><span style={{fontSize:12.5,color:CZ.muted}}>Soft check only — score </span><span style={{fontSize:12.5,color:CZ.success,fontWeight:600}}>not affected</span></div>
+      <div style={{marginTop:10}}><AIBubble message="Hi, I'm here if you need help at any step." style={{margin:0}}/></div>
+      <div style={{textAlign:'center',padding:'8px 0 4px'}}><span className="pressable" onClick={()=>navigate(SCREENS.SIGN_IN)} style={{fontSize:14,color:CZ.navyMid,fontWeight:600,cursor:'pointer'}}>Already have an account? Sign in →</span></div>
+      <HomeIndicator/>
+    </div>
+  </Screen>;
+}
+function OTPVerifyScreen(){
+  const {navigate,goBack}=useNav();
+  const [otp,setOtp]=React.useState('');
+  const [cd,setCd]=React.useState(30);
+  React.useEffect(()=>{if(cd<=0)return;const id=setTimeout(()=>setCd(c=>c-1),1000);return()=>clearTimeout(id);},[cd]);
+  return <Screen className="screen-enter">
+    <StatusBar/>
+    <NavBar onBack={goBack}/>
+    <div style={{flex:1,padding:'20px 24px',display:'flex',flexDirection:'column',gap:20}}>
+      <div><div style={{fontSize:24,fontWeight:800,color:CZ.text,letterSpacing:-.5,marginBottom:8}}>Verify your number</div>
+      <p style={{fontSize:14,color:CZ.textMd,lineHeight:1.6,margin:0}}>We sent a 4-digit OTP to <strong style={{color:CZ.navy}}>+91 98765 43210</strong></p></div>
+      <OTPBoxes value={otp} onChange={setOtp} total={4}/>
+      <div style={{textAlign:'center'}}>{cd>0?<span style={{fontSize:13,color:CZ.muted}}>Resend in <strong style={{color:CZ.navy}}>0:{cd.toString().padStart(2,'0')}</strong></span>:<span className="pressable" onClick={()=>setCd(30)} style={{fontSize:13,color:CZ.navyMid,fontWeight:700,cursor:'pointer'}}>Resend OTP →</span>}</div>
+      <div style={{background:CZ.tealSurface,borderRadius:12,padding:'10px 14px',border:`1px solid ${CZ.tealBorder}`,fontSize:13,color:'#0C3540',lineHeight:1.5}}>✦ This is a one-time step. Your number is verified once and kept secure.</div>
+      <div style={{flex:1}}/>
+      <Button label="Verify & continue →" disabled={otp.length<4} onClick={()=>navigate(SCREENS.ELIGIBILITY)}/>
+    </div>
+    <HomeIndicator/>
+  </Screen>;
+}
+function EligibilityScreen(){
+  const {navigate,goBack}=useNav();
+  return <Screen className="screen-enter">
+    <StatusBar/><NavBar step={1} total={3} onBack={goBack} onHelp={()=>navigate(SCREENS.AI_HELP,{overlay:true})}/><Stepper active={1}/>
+    <AICard message="Based on your mobile profile, here's what you may qualify for. Complete verification to confirm your exact limit." style={{marginBottom:14}}/>
+    <div style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'0 28px'}}>
+      <div style={{textAlign:'center',marginBottom:20}}>
+        <div style={{fontSize:11.5,fontWeight:700,color:CZ.muted,letterSpacing:1.2,textTransform:'uppercase',marginBottom:10}}>You may qualify for</div>
+        <div style={{fontSize:50,fontWeight:800,color:CZ.navy,lineHeight:1,letterSpacing:-1}}>₹20,000</div>
+        <div style={{fontSize:26,fontWeight:700,color:CZ.muted,margin:'4px 0',lineHeight:1}}>to</div>
+        <div style={{fontSize:50,fontWeight:800,color:CZ.navy,lineHeight:1,letterSpacing:-1}}>₹75,000</div>
+      </div>
+      <p style={{fontSize:14,color:CZ.textMd,textAlign:'center',lineHeight:1.6,margin:'0 0 20px',maxWidth:280}}>Exact amount confirmed after a quick identity check — takes less than 2 minutes.</p>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
+        {['No hidden fees','No commitment yet','2-min verification'].map(t=><TrustPill key={t} variant="success">✓ {t}</TrustPill>)}
+      </div>
+    </div>
+    <div style={{padding:'0 24px 12px',flexShrink:0}}>
+      <Button label="See my exact limit →" onClick={()=>navigate(SCREENS.AADHAAR_OTP)}/>
+      <div style={{textAlign:'center',marginTop:12}}><span style={{fontSize:13.5,color:CZ.navyMid,fontWeight:600,cursor:'pointer'}}>How is this calculated? →</span></div>
+      <HomeIndicator/>
+    </div>
+  </Screen>;
+}
+function AadhaarOTPScreen(){
+  const {navigate,goBack}=useNav();
+  const [otp,setOtp]=React.useState('');
+  const [cd,setCd]=React.useState(45);
+  React.useEffect(()=>{if(cd<=0)return;const id=setTimeout(()=>setCd(c=>c-1),1000);return()=>clearTimeout(id);},[cd]);
+  React.useEffect(()=>{
+    const id=setTimeout(()=>{
+      let filled='';const digits=['8','3','1','6','4','2'];
+      const fill=(i)=>{if(i>=6)return;setTimeout(()=>{filled+=digits[i];setOtp(filled);fill(i+1);},140);};
+      fill(0);
+    },3000);return()=>clearTimeout(id);
+  },[]);
+  return <Screen className="screen-enter">
+    <StatusBar/><NavBar step={2} total={3} onBack={goBack} onHelp={()=>navigate(SCREENS.AI_HELP,{overlay:true})}/><Stepper active={2}/>
+    <AICard message="I've requested a 6-digit OTP from UIDAI — the government body managing Aadhaar. It will arrive in about 30 seconds." link="What is UIDAI?" style={{marginBottom:16}}/>
+    <div style={{padding:'0 20px 12px',flexShrink:0}}>
+      <div style={{display:'inline-flex',alignItems:'center',gap:8,background:CZ.subtle,borderRadius:24,padding:'8px 16px',border:`1px solid ${CZ.border}`}}>
+        <div style={{width:28,height:28,borderRadius:'50%',background:CZ.navyLight,border:`1px solid ${CZ.navyBorder}`,display:'flex',alignItems:'center',justifyContent:'center'}}>📱</div>
+        <div><div style={{fontSize:11,color:CZ.muted,fontWeight:500}}>OTP sent to</div><div style={{fontSize:14,fontWeight:700,color:CZ.text}}>+91 98XXX XXXXX</div></div>
+      </div>
+    </div>
+    <div style={{padding:'0 20px 8px',flexShrink:0}}><OTPBoxes value={otp} onChange={setOtp} total={6}/></div>
+    {otp.length>0&&<div style={{display:'flex',justifyContent:'center',padding:'4px 20px',flexShrink:0}}>
+      <div style={{display:'inline-flex',alignItems:'center',gap:6,background:CZ.tealSurface,border:`1px solid ${CZ.tealBorder}`,borderRadius:20,padding:'5px 12px'}}>
+        <div style={{width:6,height:6,borderRadius:'50%',background:CZ.teal,animation:'czPulse 1.8s ease-in-out infinite'}}/>
+        <span style={{fontSize:12.5,color:CZ.teal,fontWeight:600}}>{otp.length<6?'Auto-detecting OTP…':'OTP detected ✓'}</span>
+      </div>
+    </div>}
+    <div style={{textAlign:'center',padding:'8px 20px',flexShrink:0}}>
+      {cd>0?<span style={{fontSize:13,color:CZ.muted}}>Resend OTP in <strong style={{color:CZ.navy}}>0:{cd.toString().padStart(2,'0')}</strong></span>
+      :<span className="pressable" onClick={()=>setCd(45)} style={{fontSize:13,color:CZ.navyMid,fontWeight:700,cursor:'pointer'}}>Resend OTP →</span>}
+    </div>
+    <div style={{flex:1}}/>
+    <div style={{padding:'0 24px 12px',flexShrink:0}}>
+      <Button label="Confirm my Aadhaar" disabled={otp.length<6} onClick={()=>navigate(SCREENS.PAN_CAPTURE)}/>
+      <div style={{textAlign:'center',marginTop:12}}><span className="pressable" onClick={()=>navigate(SCREENS.AI_HELP,{overlay:true})} style={{fontSize:13.5,color:CZ.navyMid,fontWeight:600,cursor:'pointer'}}>Not receiving OTP? I can help →</span></div>
+      <HomeIndicator/>
+    </div>
+  </Screen>;
+}
+function PANCaptureScreen(){
+  const {navigate,goBack}=useNav();
+  const [error,setError]=React.useState(false);
+  const [captured,setCaptured]=React.useState(false);
+  const [capturing,setCapturing]=React.useState(false);
+  const PW=264,PH=Math.round(264/1.586),CO=20;
+  const chip=error?{bg:CZ.errorBg,c:CZ.error,bd:CZ.errorBdr,icon:'✕',txt:'Try again'}
+    :captured?{bg:CZ.successBg,c:CZ.success,bd:CZ.successBdr,icon:'✓',txt:'Captured!'}
+    :{bg:CZ.warningBg,c:CZ.warning,bd:CZ.warningBdr,icon:'●',txt:'Scanning…'};
+  return <Screen className="screen-enter">
+    <StatusBar/><NavBar step={2} total={3} onBack={goBack} onHelp={()=>navigate(SCREENS.AI_HELP,{overlay:true})}/><Stepper active={2}/>
+    <AIBubble message={error?"I couldn't read the card clearly. Ensure it's fully in frame.":captured?"Card captured! Verifying details...":"Place your PAN card flat in the frame."} style={{marginBottom:12}}/>
+    <div style={{margin:'0 16px',flexShrink:0}}>
+      <div style={{height:270,borderRadius:20,background:'linear-gradient(180deg,#0A1628 0%,#0D1F3C 100%)',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',boxShadow:'0 4px 24px rgba(9,22,64,.3)'}}>
+        <div style={{position:'absolute',inset:0,backgroundImage:'linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px)',backgroundSize:'32px 32px'}}/>
+        {!error&&!captured&&<div style={{position:'absolute',left:0,right:0,height:1.5,background:'linear-gradient(90deg,transparent,rgba(8,145,178,.8),transparent)',animation:'czScanLine 2.5s ease-in-out infinite'}}/>}
+        <div style={{width:PW,height:PH,position:'relative'}}>
+          <div style={{position:'absolute',inset:0,border:`2px dashed ${captured?'rgba(5,150,105,.7)':error?'rgba(220,43,43,.7)':'rgba(255,255,255,.45)'}`,borderRadius:10,transition:'border-color .3s'}}/>
+          {[{t:true,l:true},{t:true,r:true},{b:true,l:true},{b:true,r:true}].map((c,i)=><div key={i} style={{position:'absolute',width:CO,height:CO,...(c.t?{top:-2}:{bottom:-2}),...(c.l?{left:-2}:{right:-2}),borderTop:c.t?`3px solid ${captured?CZ.success:error?CZ.error:'white'}`:'none',borderBottom:c.b?`3px solid ${captured?CZ.success:error?CZ.error:'white'}`:'none',borderLeft:c.l?`3px solid ${captured?CZ.success:error?CZ.error:'white'}`:'none',borderRight:c.r?`3px solid ${captured?CZ.success:error?CZ.error:'white'}`:'none'}}/>)}
+          <div style={{position:'absolute',inset:0,padding:12,opacity:.18,display:'flex',flexDirection:'column',gap:5}}>
+            <div style={{height:7,width:50,background:'white',borderRadius:2}}/><div style={{height:5,width:90,background:'white',borderRadius:2}}/><div style={{flex:1}}/>
+            <div style={{display:'flex',gap:8}}><div style={{width:30,height:36,background:'white',borderRadius:2}}/><div style={{display:'flex',flexDirection:'column',gap:4,justifyContent:'center'}}><div style={{height:5,width:70,background:'white',borderRadius:2}}/><div style={{height:5,width:50,background:'white',borderRadius:2}}/><div style={{height:5,width:80,background:'white',borderRadius:2}}/></div></div>
+          </div>
+          <div style={{position:'absolute',top:-16,right:0}}><div style={{background:chip.bg,color:chip.c,border:`1px solid ${chip.bd}`,borderRadius:20,padding:'4px 10px',fontSize:12,fontWeight:600,display:'inline-flex',gap:5,alignItems:'center'}}>
+            <span style={!error&&!captured?{animation:'czPulse 1.5s infinite',display:'inline-block'}:{}}>{capturing?'…':chip.icon}</span>
+            <span>{capturing?'Capturing…':chip.txt}</span>
+          </div></div>
+        </div>
+        <div style={{position:'absolute',bottom:10,left:'50%',transform:'translateX(-50%)',fontSize:9,color:'rgba(255,255,255,.2)',letterSpacing:2,whiteSpace:'nowrap'}}>LIVE CAMERA VIEW</div>
+      </div>
+    </div>
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'12px 24px',flexShrink:0}}>
+      {error?<><Button label="Try again" onClick={()=>{setError(false);setCaptured(false);}}/><div style={{textAlign:'center',marginTop:10,fontSize:13,color:CZ.muted}}>Having trouble? I can guide you step by step.</div></>
+      :<div className="pressable" onClick={()=>{if(capturing||captured)return;setCapturing(true);setTimeout(()=>{setCaptured(true);setCapturing(false);setTimeout(()=>navigate(SCREENS.PROCESSING),900);},1500);}} style={{position:'relative',width:68,height:68}}>
+        <div style={{position:'absolute',inset:-8,borderRadius:'50%',border:`2px dashed ${captured?CZ.success:CZ.teal}`,opacity:captured?.8:.4,animation:captured?'none':'czPulse 2s ease-in-out infinite'}}/>
+        <div style={{width:68,height:68,borderRadius:'50%',background:captured?CZ.success:CZ.navy,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 20px rgba(12,30,72,.35)',transition:'background .3s'}}>
+          {captured?<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M6 14L11 19L22 8" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          :capturing?<div style={{width:20,height:20,borderRadius:'50%',border:'2px solid white',borderTopColor:'transparent',animation:'czSpin .7s linear infinite'}}/>
+          :<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="3" y="6" width="22" height="17" rx="3.5" stroke="white" strokeWidth="1.8"/><circle cx="14" cy="14.5" r="5" stroke="white" strokeWidth="1.8"/><circle cx="14" cy="14.5" r="2.5" fill="white"/><rect x="18" y="6" width="4" height="3" rx="1" fill="white"/></svg>}
+        </div>
+      </div>}
+    </div>
+    <div style={{flex:1}}/><div style={{textAlign:'center',padding:'4px 28px',fontSize:11,color:CZ.muted}}>Your PAN data is encrypted and used only for identity verification.</div>
+    <HomeIndicator/>
+  </Screen>;
+}
+function ProcessingScreen(){
+  const {navigate}=useNav();
+  const [stage,setStage]=React.useState(0);
+  const [pct,setPct]=React.useState(.1);
+  const [done,setDone]=React.useState(false);
+  const STAGES=[{label:'Checking your PAN details',d:2000},{label:'Confirming your Aadhaar',d:2500},{label:'Assessing your credit profile',d:3000}];
+  React.useEffect(()=>{
+    let t;const total=STAGES.reduce((s,x)=>s+x.d,0);
+    const go=(idx,el)=>{if(idx>=STAGES.length){setPct(1);setDone(true);t=setTimeout(()=>navigate(SCREENS.CREDIT_REVEAL),2000);return;}
+    setStage(idx);setPct(Math.min((el+STAGES[idx].d/2)/total,.95));
+    t=setTimeout(()=>go(idx+1,el+STAGES[idx].d),STAGES[idx].d);};
+    go(0,0);return()=>clearTimeout(t);
+  },[]);
+  return <Screen bg={CZ.heroGrad} className="screen-enter">
+    <StatusBar dark/><div style={{display:'flex',justifyContent:'center',padding:'0 20px 16px',flexShrink:0}}><Logo dark size="md"/></div>
+    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'0 28px 20px',gap:20}}>
+      <div style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center'}}>
+        <ProgressRing pct={pct} size={96} color={done?CZ.success:CZ.teal} trackColor="rgba(255,255,255,.1)"/>
+        <div style={{position:'absolute',display:'flex',flexDirection:'column',alignItems:'center'}}>
+          {done?<svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{animation:'czSuccessPop .5s ease'}}><path d="M6 16L13 23L26 10" stroke={CZ.success} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          :<span style={{fontSize:18,fontWeight:800,color:'white'}}>{Math.round(pct*100)}%</span>}
+        </div>
+      </div>
+      <div style={{textAlign:'center'}}>
+        <div style={{fontSize:22,fontWeight:800,color:'white',letterSpacing:-.4}}>{done?'Verification complete':'Verifying your identity…'}</div>
+        {!done&&<div style={{fontSize:14,color:'rgba(255,255,255,.55)',marginTop:6}}>This usually takes less than 15 seconds</div>}
+      </div>
+      <div style={{width:'100%',background:'rgba(255,255,255,.07)',backdropFilter:'blur(12px)',borderRadius:20,border:'1px solid rgba(255,255,255,.12)',padding:16,boxShadow:'0 8px 32px rgba(9,22,64,.3)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+          <div style={{width:26,height:26,borderRadius:'50%',background:CZ.aiGrad,display:'flex',alignItems:'center',justifyContent:'center'}}><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1L6.2 4H9.5L6.9 5.8L7.9 9L5 7.2L2.1 9L3.1 5.8L.5 4H3.8L5 1Z" fill="white"/></svg></div>
+          <span style={{fontSize:11,fontWeight:700,color:CZ.teal,letterSpacing:.5,textTransform:'uppercase'}}>Live Status</span>
+        </div>
+        {STAGES.map((s,i)=>{const isDone=i<stage,isActive=i===stage&&!done;return(
+          <div key={i} style={{display:'flex',gap:10,alignItems:'center',marginBottom:i<2?12:0}}>
+            <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,background:isDone?CZ.successBg:isActive?'rgba(255,255,255,.08)':'rgba(255,255,255,.05)',border:`1px solid ${isDone?CZ.successBdr:isActive?'rgba(255,255,255,.2)':'rgba(255,255,255,.08)'}`,display:'flex',alignItems:'center',justifyContent:'center',transition:'all .4s'}}>
+              {isDone?<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5L4.2 7.2L8 3" stroke={CZ.success} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              :isActive?<div style={{width:7,height:7,borderRadius:'50%',border:'1.5px solid rgba(255,255,255,.6)',borderTopColor:'transparent',animation:'czSpin .9s linear infinite'}}/>
+              :<div style={{width:5,height:5,borderRadius:'50%',background:'rgba(255,255,255,.2)'}}/>}
+            </div>
+            <span style={{fontSize:13.5,color:isDone?'white':isActive?'rgba(255,255,255,.85)':'rgba(255,255,255,.35)',fontWeight:(isDone||isActive)?500:400,transition:'color .4s'}}>{s.label}</span>
+          </div>
+        );})}
+        {done&&<div style={{marginTop:14,padding:'12px 14px',background:'rgba(5,150,105,.15)',borderRadius:12,border:`1px solid ${CZ.successBdr}`,animation:'czSlideUp .4s ease'}}>
+          <span style={{fontSize:14,color:'#6EE7B7',fontWeight:500}}>Everything checks out, Arun. Your limit is ready! 🎉</span>
+        </div>}
+      </div>
+    </div>
+    <div style={{padding:'0 28px 16px',flexShrink:0}}>
+      {done?<div><div style={{fontSize:12.5,color:'rgba(255,255,255,.5)',textAlign:'center',marginBottom:10}}>Preparing your personalised offer…</div>
+      <div style={{height:4,background:'rgba(255,255,255,.1)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',background:CZ.aiGrad,borderRadius:2,animation:'czProgressFill 1.8s ease forwards'}}/></div></div>
+      :<p style={{textAlign:'center',fontSize:13,color:'rgba(255,255,255,.45)',lineHeight:1.6,margin:0}}>Please keep the app open. Your information is being securely verified.</p>}
+      <HomeIndicator dark/>
+    </div>
+  </Screen>;
+}
+
+/* ─── Approval Screens ────────────────────────────── */
+function CreditRevealScreen(){
+  const {navigate}=useNav();
+  const [shown,setShown]=React.useState(false);
+  React.useEffect(()=>{const id=setTimeout(()=>setShown(true),200);return()=>clearTimeout(id);},[]);
+  const CONF=[{x:28,y:14,r:5,c:CZ.teal},{x:65,y:8,r:3.5,c:CZ.navyMid},{x:108,y:20,r:6,c:CZ.success},{x:158,y:6,r:3,c:CZ.warning},{x:210,y:18,r:5,c:CZ.teal},{x:265,y:10,r:4,c:CZ.navyMid},{x:312,y:22,r:5.5,c:CZ.success},{x:355,y:8,r:3.5,c:CZ.warning},{x:44,y:44,r:3,c:CZ.warning},{x:90,y:36,r:4.5,c:CZ.teal},{x:144,y:50,r:3,c:CZ.navyMid},{x:196,y:32,r:4,c:CZ.success}];
+  return <Screen className="screen-enter">
+    <StatusBar/>
+    <div style={{display:'flex',alignItems:'center',padding:'0 20px 12px',flexShrink:0}}>
+      <Logo size="sm"/><div style={{flex:1}}/>
+      <div style={{display:'flex',alignItems:'center',gap:5,background:CZ.successBg,border:`1px solid ${CZ.successBdr}`,borderRadius:20,padding:'5px 12px',fontSize:12.5,fontWeight:700,color:CZ.success,animation:shown?'czSuccessPop .5s ease both':'none'}}>
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill={CZ.success}/><path d="M3.5 6.5L5.5 8.5L9.5 4.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        Approved!
+      </div>
+    </div>
+    <div style={{position:'relative',textAlign:'center',padding:'0 28px 16px',flexShrink:0}}>
+      <svg style={{position:'absolute',top:0,left:0,width:'100%',height:64,pointerEvents:'none'}}>{CONF.map((d,i)=><circle key={i} cx={d.x} cy={d.y} r={d.r} fill={d.c} opacity={shown?.55:0} style={{transition:`opacity .5s ease ${i*30}ms`}}/>)}</svg>
+      <div style={{paddingTop:14}}>
+        <h1 style={{fontSize:28,fontWeight:800,color:CZ.navy,margin:'0 0 6px',letterSpacing:-.5,animation:shown?'czSlideUp .4s ease both':'none'}}>You're approved, Arun. 🎉</h1>
+        <p style={{fontSize:14.5,color:CZ.textMd,margin:0}}>Your CredZo credit line is active and ready to use.</p>
+      </div>
+    </div>
+    <div style={{margin:'0 20px 12px',flexShrink:0}}>
+      <Card style={{padding:'18px 20px',background:CZ.cardGrad,border:'none'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
+          <div><div style={{fontSize:11,fontWeight:600,color:'rgba(255,255,255,.55)',letterSpacing:.8,textTransform:'uppercase',marginBottom:4}}>Your Credit Limit</div>
+          <div style={{fontSize:52,fontWeight:800,color:'white',lineHeight:1,letterSpacing:-1,animation:shown?'czSlideUp .5s .2s ease both':'none'}}>₹35,000</div></div>
+          <div style={{width:44,height:44,borderRadius:12,background:'rgba(255,255,255,.1)',border:'1px solid rgba(255,255,255,.15)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M4 4H18L11 11L18 18H4L11 11L4 4Z" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:10,marginBottom:14}}>
+          {[{label:'Interest Rate',value:'1.5% / month'},{label:'Valid for',value:'12 months'},{label:'Processing fee',value:'₹0'}].map(({label,value})=><div key={label} style={{flex:1,background:'rgba(255,255,255,.09)',borderRadius:10,padding:'8px 10px',border:'1px solid rgba(255,255,255,.08)'}}>
+            <div style={{fontSize:10,color:'rgba(255,255,255,.5)',marginBottom:3}}>{label}</div>
+            <div style={{fontSize:12.5,fontWeight:700,color:'white'}}>{value}</div>
+          </div>)}
+        </div>
+        <div style={{borderTop:'1px solid rgba(255,255,255,.12)',paddingTop:10,textAlign:'center',fontSize:12,color:'rgba(255,255,255,.5)'}}>Available from today · No annual fee · Prepayment free</div>
+      </Card>
+    </div>
+    <AICard message="No hidden charges. Everything you'll pay is shown above. Tap 'Draw credit' only when you're ready." style={{marginBottom:8}}/>
+    <div style={{flex:1}}/>
+    <div style={{padding:'0 24px 12px',flexShrink:0}}>
+      <Button label="Draw credit now →" onClick={()=>navigate(SCREENS.KFS_REVIEW)}/>
+      <div style={{textAlign:'center',marginTop:12}}><span className="pressable" onClick={()=>navigate(SCREENS.DASHBOARD)} style={{fontSize:14,color:CZ.navyMid,fontWeight:600,cursor:'pointer'}}>Explore my dashboard first →</span></div>
+      <HomeIndicator/>
+    </div>
+  </Screen>;
+}
+function KFSScreen(){
+  const {navigate,goBack}=useNav();
+  const [agreed,setAgreed]=React.useState(false);
+  const [expanded,setExpanded]=React.useState(null);
+  const ROWS=[{label:'Loan Amount',value:'₹10,000',highlight:true},{label:'Interest Rate',value:'1.5% / month (18% p.a.)'},{label:'Processing Fee',value:'₹0',positive:true},{label:'Repayment Due',value:'31 May 2026'},{label:'Total Repayment',value:'₹10,150',highlight:true},{label:'Late Payment Fee',value:'₹150 (after 3 days)'},{label:'Prepayment',value:'Free, anytime',positive:true},{label:'Cooling-off Period',value:'3 days — cancel free',positive:true}];
+  return <Screen className="screen-enter">
+    <StatusBar/><NavBar variant="back-step" title="Review your terms" onBack={goBack}/>
+    <div style={{margin:'0 20px 12px',flexShrink:0,background:CZ.navyLight,borderRadius:12,border:`1px solid ${CZ.navyBorder}`,padding:'10px 14px',display:'flex',alignItems:'center',gap:10}}>
+      <div style={{width:32,height:32,borderRadius:'50%',background:CZ.navy,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>🛡️</div>
+      <div><div style={{fontSize:12.5,fontWeight:700,color:CZ.navy}}>RBI-Mandated Key Fact Statement</div><div style={{fontSize:11,color:CZ.textMd}}>Tap any row for plain English</div></div>
+    </div>
+    <div className="scroll-hidden" style={{flex:1,overflow:'auto',padding:'0 20px'}}>
+      <div style={{borderRadius:16,overflow:'hidden',border:`1px solid ${CZ.border}`,marginBottom:12}}>
+        {ROWS.map(({label,value,highlight,positive},i)=><div key={i}>
+          <div className="pressable" onClick={()=>setExpanded(expanded===label?null:label)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',background:expanded===label?CZ.navyLight:highlight?'#F0F5FF':CZ.card,borderBottom:i<ROWS.length-1?`1px solid ${CZ.border}`:'none',gap:10,cursor:'pointer',transition:'background .2s'}}>
+            <span style={{fontSize:13,color:CZ.textMd,flex:1}}>{label}</span>
+            <span style={{fontSize:13.5,fontWeight:700,color:positive?CZ.success:highlight?CZ.navy:CZ.text}}>{value}</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{transform:expanded===label?'rotate(90deg)':'none',transition:'transform .2s',flexShrink:0}}><path d="M6 4l4 4-4 4" stroke={CZ.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          {expanded===label&&<div style={{padding:'10px 16px',background:CZ.tealSurface,animation:'czSlideUp .2s ease'}}><p style={{margin:0,fontSize:13,color:'#0C3540',lineHeight:1.6}}>✦ This field means: {label.toLowerCase()} is {value}. No surprises.</p></div>}
+        </div>)}
+      </div>
+      <AICard message="Tap any row to understand it in plain language. I'll explain any term you don't recognise." style={{margin:'0 0 12px'}}/>
+    </div>
+    <div style={{padding:'8px 24px 12px',flexShrink:0}}>
+      <div className="pressable" onClick={()=>setAgreed(v=>!v)} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'12px 14px',background:agreed?CZ.navyLight:CZ.subtle,borderRadius:12,border:`1px solid ${agreed?CZ.navyBorder:CZ.border}`,marginBottom:10,cursor:'pointer',transition:'all .2s'}}>
+        <div style={{width:20,height:20,borderRadius:6,background:agreed?CZ.navy:'white',border:`2px solid ${agreed?CZ.navy:CZ.border}`,flexShrink:0,marginTop:1,display:'flex',alignItems:'center',justifyContent:'center',transition:'all .2s'}}>
+          {agreed&&<svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2 5.5L4.5 8L9 3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        </div>
+        <span style={{fontSize:13,color:CZ.text,lineHeight:1.5}}>I have read and understood the Key Fact Statement above.</span>
+      </div>
+      <Button label="I understand and agree" disabled={!agreed} onClick={()=>navigate(SCREENS.CREDIT_DRAW)}/>
+      <HomeIndicator/>
+    </div>
+  </Screen>;
+}
+function CreditDrawScreen(){
+  const {navigate,goBack}=useNav();
+  const [amount,setAmount]=React.useState(10000);
+  const [confirming,setConfirming]=React.useState(false);
+  const sliderRef=React.useRef(null);
+  const MIN=1000,MAX=35000,QUICK=[5000,10000,15000,20000];
+  const interest=Math.round(amount*.015),total=amount+interest;
+  const pct=((amount-MIN)/(MAX-MIN))*100;
+  const move=React.useCallback((cx)=>{if(!sliderRef.current)return;const r=sliderRef.current.getBoundingClientRect(),ratio=Math.max(0,Math.min(1,(cx-r.left)/r.width)),raw=MIN+ratio*(MAX-MIN),snap=Math.round(raw/1000)*1000;setAmount(Math.max(MIN,Math.min(MAX,snap)));},[]);
+  const fINR=n=>n.toLocaleString('en-IN');
+  return <Screen className="screen-enter">
+    <StatusBar/><NavBar variant="back-step" title="Draw credit" onBack={goBack}/>
+    <div style={{padding:'0 20px 4px',flexShrink:0}}>
+      <div style={{background:CZ.navyLight,borderRadius:12,border:`1px solid ${CZ.navyBorder}`,padding:'8px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style={{fontSize:13,color:CZ.textMd}}>Available credit</span>
+        <span style={{fontSize:16,fontWeight:800,color:CZ.navy}}>₹{fINR(MAX)}</span>
+      </div>
+    </div>
+    <div style={{textAlign:'center',padding:'16px 28px 4px',flexShrink:0}}>
+      <div style={{fontSize:11,fontWeight:700,color:CZ.muted,letterSpacing:1,textTransform:'uppercase',marginBottom:8}}>Drawing amount</div>
+      <div style={{fontSize:56,fontWeight:800,color:CZ.navy,lineHeight:1,letterSpacing:-1.5,transition:'all .15s'}}>₹{fINR(amount)}</div>
+    </div>
+    <div style={{padding:'8px 28px 4px',flexShrink:0}}>
+      <div ref={sliderRef} style={{position:'relative',height:6,background:CZ.border,borderRadius:3,cursor:'pointer'}} onMouseMove={e=>{if(e.buttons!==1)return;move(e.clientX)}} onMouseDown={e=>move(e.clientX)} onTouchMove={e=>{e.preventDefault();move(e.touches[0].clientX)}} onTouchStart={e=>move(e.touches[0].clientX)}>
+        <div style={{position:'absolute',left:0,top:0,bottom:0,width:`${pct}%`,background:`linear-gradient(90deg,${CZ.teal},${CZ.navy})`,borderRadius:3,transition:'width .08s'}}/>
+        <div style={{position:'absolute',top:'50%',left:`${pct}%`,transform:'translate(-50%,-50%)',width:22,height:22,borderRadius:'50%',background:CZ.navy,border:'3px solid white',boxShadow:'0 2px 10px rgba(12,30,72,.25)',transition:'left .08s',cursor:'grab',touchAction:'none'}}/>
+      </div>
+      <div style={{display:'flex',justifyContent:'space-between',marginTop:7}}><span style={{fontSize:11,color:CZ.muted}}>₹1,000</span><span style={{fontSize:11,color:CZ.muted}}>₹35,000</span></div>
+    </div>
+    <div style={{display:'flex',gap:8,padding:'0 20px 10px',flexShrink:0}}>
+      {QUICK.map(v=><div key={v} className="pressable" onClick={()=>setAmount(v)} style={{flex:1,height:38,borderRadius:24,border:`1.5px solid ${v===amount?CZ.navy:CZ.border}`,background:v===amount?CZ.navyLight:'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:v===amount?700:500,color:v===amount?CZ.navy:CZ.textMd,cursor:'pointer',transition:'all .2s'}}>₹{v/1000}K</div>)}
+    </div>
+    <div style={{margin:'0 20px 8px',flexShrink:0}}>
+      <Card style={{padding:'14px 16px'}}>
+        <div style={{fontSize:11.5,fontWeight:700,color:CZ.muted,textTransform:'uppercase',letterSpacing:.5,marginBottom:12}}>What you'll pay</div>
+        {[{label:'Amount borrowed',value:`₹${fINR(amount)}`},{label:'Interest (30 days)',value:`₹${fINR(interest)}`},{label:'Processing fee',value:'₹0'}].map(({label,value},i)=><div key={i} style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><span style={{fontSize:13.5,color:CZ.textMd}}>{label}</span><span style={{fontSize:13.5,color:CZ.text,fontWeight:500,transition:'all .15s'}}>{value}</span></div>)}
+        <div style={{height:1,background:CZ.border,margin:'4px 0 8px'}}/>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontSize:15,fontWeight:700,color:CZ.text}}>Total repayment</span>
+          <span style={{fontSize:18,fontWeight:800,color:CZ.navy,transition:'all .15s'}}>₹{fINR(total)}</span>
+        </div>
+        <div style={{marginTop:6,fontSize:11.5,color:CZ.muted}}>Due: 30 days from draw · Prepayment: Free anytime</div>
+      </Card>
+    </div>
+    <AICard message={`You're drawing ₹${fINR(amount)}. The full cost is shown above — no hidden charges.`} style={{marginBottom:8}}/>
+    <div style={{flex:1}}/>
+    <div style={{padding:'0 24px 12px',flexShrink:0}}>
+      <Button label="Review and confirm →" loading={confirming} onClick={()=>{setConfirming(true);setTimeout(()=>{setConfirming(false);navigate(SCREENS.DASHBOARD)},1800)}}/>
+      <HomeIndicator/>
+    </div>
+  </Screen>;
+}
+
+/* ─── Dashboard ───────────────────────────────────── */
+function DashboardScreen(){
+  const {navigate}=useNav();
+  const [tab,setTab]=React.useState(0);
+  const [nudge,setNudge]=React.useState(true);
+  const [paying,setPaying]=React.useState(false);
+  const TL=[{date:'31',month:'Mar',amount:'₹10,150',paid:true},{date:'30',month:'Apr',amount:'₹10,150',paid:true},{date:'31',month:'May',amount:'₹10,150',current:true},{date:'30',month:'Jun',amount:'—',future:true},{date:'31',month:'Jul',amount:'—',future:true}];
+  return <Screen className="screen-enter">
+    <StatusBar/>
+    <div style={{padding:'0 20px 4px',flexShrink:0,display:'flex',alignItems:'center'}}>
+      <Logo size="sm"/><div style={{flex:1}}/>
+      <div className="pressable" style={{width:36,height:36,borderRadius:'50%',background:CZ.subtle,border:`1px solid ${CZ.border}`,display:'flex',alignItems:'center',justifyContent:'center',marginRight:10,cursor:'pointer',position:'relative'}}>
+        🔔<div style={{position:'absolute',top:0,right:0,width:8,height:8,borderRadius:'50%',background:CZ.error,border:'1.5px solid white'}}/>
+      </div>
+      <div style={{width:36,height:36,borderRadius:'50%',background:`linear-gradient(135deg,${CZ.teal},${CZ.navyMid})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:800,color:'white',border:'2px solid white',boxShadow:'0 2px 8px rgba(12,30,72,.2)'}}>A</div>
+    </div>
+    <div style={{padding:'4px 20px 12px',flexShrink:0}}>
+      <div style={{fontSize:22,fontWeight:800,color:CZ.text,letterSpacing:-.4}}>Good morning, Arun 👋</div>
+      <div style={{fontSize:13,color:CZ.muted,marginTop:2}}>Your credit line is in good shape.</div>
+    </div>
+    <div className="scroll-hidden" style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column'}}>
+      <div style={{margin:'0 20px 12px',flexShrink:0}}>
+        <Card style={{padding:16,overflow:'hidden',position:'relative'}}>
+          <div style={{position:'absolute',top:-20,right:-20,width:120,height:120,borderRadius:'50%',background:`radial-gradient(circle,${CZ.navyLight} 0%,transparent 70%)`,pointerEvents:'none'}}/>
+          <div style={{display:'flex',gap:0,marginBottom:14,position:'relative'}}>
+            <div style={{flex:1}}><div style={{fontSize:11.5,color:CZ.muted,marginBottom:4}}>Credit available</div><div style={{fontSize:30,fontWeight:800,color:CZ.navy,lineHeight:1,letterSpacing:-.5}}>₹25,000</div></div>
+            <div style={{width:1,background:CZ.border,margin:'0 16px'}}/>
+            <div style={{flex:1}}><div style={{fontSize:11.5,color:CZ.muted,marginBottom:4}}>Outstanding</div><div style={{fontSize:30,fontWeight:800,color:CZ.warning,lineHeight:1,letterSpacing:-.5}}>₹10,000</div></div>
+          </div>
+          <div style={{height:7,background:CZ.border,borderRadius:4,overflow:'hidden',marginBottom:5}}>
+            <div style={{height:'100%',width:'29%',background:`linear-gradient(90deg,${CZ.teal},${CZ.navyMid})`,borderRadius:4,transition:'width .8s cubic-bezier(.4,0,.2,1)'}}/>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{fontSize:11.5,color:CZ.muted}}>29% utilised</span><span style={{fontSize:11.5,color:CZ.muted}}>Limit: ₹35,000</span></div>
+          <div style={{display:'flex',gap:8,marginTop:14}}>
+            {[{l:'Draw',i:'↓',p:true,a:()=>navigate(SCREENS.CREDIT_DRAW)},{l:'Pay',i:'↑',p:false,a:()=>{setPaying(true);setTimeout(()=>setPaying(false),1600);}},{l:'History',i:'≡',p:false,a:()=>{}}].map(a=><div key={a.l} className="pressable" onClick={a.a} style={{flex:1,height:40,borderRadius:20,background:a.p?CZ.navy:CZ.subtle,border:`1px solid ${a.p?CZ.navy:CZ.border}`,display:'flex',alignItems:'center',justifyContent:'center',gap:5,cursor:'pointer'}}>
+              <span style={{fontSize:14,color:a.p?'white':CZ.navyMid}}>{a.i}</span><span style={{fontSize:12.5,fontWeight:600,color:a.p?'white':CZ.textMd}}>{a.l}</span>
+            </div>)}
+          </div>
+        </Card>
+      </div>
+      <div style={{padding:'0 20px 8px',flexShrink:0,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style={{fontSize:14.5,fontWeight:700,color:CZ.text}}>Repayment plan</span>
+        <span style={{fontSize:12.5,color:CZ.navyMid,fontWeight:600,cursor:'pointer'}}>View all →</span>
+      </div>
+      <div style={{padding:'0 20px 10px',flexShrink:0}}>
+        <div className="scroll-hidden" style={{display:'flex',gap:7,overflowX:'auto'}}>
+          {TL.map((d,i)=><div key={i} style={{flexShrink:0,width:d.current?68:56,padding:'10px 6px',background:d.paid?CZ.successBg:d.current?CZ.navy:CZ.card,border:`1.5px solid ${d.paid?CZ.successBdr:d.current?CZ.navy:CZ.border}`,borderRadius:14,textAlign:'center',boxShadow:d.current?'0 4px 16px rgba(12,30,72,.2)':CZ.shadowSm}}>
+            <div style={{fontSize:d.current?20:16,fontWeight:800,color:d.paid?CZ.success:d.current?'white':CZ.muted,lineHeight:1}}>{d.paid?'✓':d.date}</div>
+            <div style={{fontSize:10,color:d.current?'rgba(255,255,255,.65)':CZ.muted,marginTop:2}}>{d.month}</div>
+            <div style={{fontSize:9.5,color:d.current?'rgba(255,255,255,.85)':CZ.muted,marginTop:1,fontWeight:d.current?600:400}}>{d.amount}</div>
+          </div>)}
+        </div>
+      </div>
+      <div style={{margin:'0 20px 10px',flexShrink:0}}>
+        <Card style={{padding:'14px 16px'}}>
+          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:10}}>
+            <div><div style={{fontSize:19,fontWeight:800,color:CZ.text,letterSpacing:-.3}}>₹10,150 due</div><div style={{fontSize:13,color:CZ.textMd,marginTop:2}}>31 May 2026</div></div>
+            <div style={{display:'flex',alignItems:'center',gap:5,background:CZ.successBg,border:`1px solid ${CZ.successBdr}`,borderRadius:20,padding:'4px 10px',flexShrink:0}}>
+              <span style={{fontSize:11.5,fontWeight:700,color:CZ.success}}>✓ 3 on-time</span>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:10}}>
+            <button className="pressable" onClick={()=>{setPaying(true);setTimeout(()=>setPaying(false),1600)}} style={{flex:2,height:48,borderRadius:24,background:paying?CZ.success:CZ.navy,color:'white',border:'none',fontSize:14,fontWeight:700,fontFamily:CZ.font,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,transition:'background .3s',boxShadow:CZ.shadowBtn}}>
+              {paying?<><div style={{width:16,height:16,borderRadius:'50%',border:'2px solid white',borderTopColor:'transparent',animation:'czSpin .8s linear infinite'}}/>Processing…</>:'Pay now'}
+            </button>
+            <div className="pressable" style={{flex:1,height:48,borderRadius:24,border:`1.5px solid ${CZ.navy}`,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}><span style={{fontSize:13.5,fontWeight:700,color:CZ.navy}}>Pay early</span></div>
+          </div>
+        </Card>
+      </div>
+      {nudge&&<div style={{padding:'0 20px 10px',flexShrink:0}}>
+        <div style={{background:CZ.tealSurface,borderRadius:14,border:`1px solid ${CZ.tealBorder}`,padding:'10px 14px',display:'flex',alignItems:'flex-start',gap:10,animation:'czSlideUp .3s ease'}}>
+          <div style={{width:24,height:24,borderRadius:'50%',background:CZ.aiGrad,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>✦</div>
+          <span style={{fontSize:12.5,color:'#0C3540',lineHeight:1.5,flex:1}}>You're on track, Arun. Paying by Friday keeps your credit score healthy. 🌱</span>
+          <div className="pressable" onClick={()=>setNudge(false)} style={{cursor:'pointer',color:CZ.muted,fontSize:16,flexShrink:0,marginTop:-2,lineHeight:1}}>×</div>
+        </div>
+      </div>}
+    </div>
+    <TabBar active={tab} onTab={setTab}/>
+  </Screen>;
+}
+
+/* ─── Edge Cases ──────────────────────────────────── */
+function PartialScreen(){
+  const {navigate,goBack}=useNav();
+  return <Screen className="screen-enter">
+    <StatusBar/><NavBar step={3} total={3} onBack={goBack}/>
+    <div className="scroll-hidden" style={{flex:1,overflowY:'auto'}}>
+      <div style={{textAlign:'center',padding:'8px 28px 16px'}}>
+        <div style={{width:60,height:60,borderRadius:'50%',background:CZ.navyLight,border:`2px solid ${CZ.navyBorder}`,margin:'0 auto 14px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:`0 0 0 8px ${CZ.subtle}`,animation:'czSuccessPop .5s ease'}}>ℹ️</div>
+        <h2 style={{fontSize:24,fontWeight:800,color:CZ.navy,lineHeight:1.2,margin:'0 0 10px',letterSpacing:-.4}}>Your credit line is ready — at a lower amount.</h2>
+        <p style={{fontSize:14,color:CZ.textMd,lineHeight:1.6,margin:0}}>Based on your profile today, we can offer ₹8,000 instead of the full ₹35,000.</p>
+      </div>
+      <div style={{margin:'0 20px 12px'}}>
+        <Card style={{padding:18}}>
+          <div style={{textAlign:'center',marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:CZ.muted,letterSpacing:.8,textTransform:'uppercase',marginBottom:6}}>Available now</div>
+            <div style={{fontSize:52,fontWeight:800,color:CZ.navy,lineHeight:1,letterSpacing:-1}}>₹8,000</div>
+          </div>
+          <div style={{background:CZ.subtle,borderRadius:10,padding:'10px 12px',marginBottom:14,border:`1px solid ${CZ.border}`}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:13,color:CZ.textMd}}>If you draw ₹8,000</span><span style={{fontSize:13,fontWeight:700,color:CZ.text}}>Repay ₹8,120</span></div>
+            <div style={{fontSize:12,color:CZ.muted}}>₹120 interest · ₹0 processing fee</div>
+          </div>
+          <Button label="Accept ₹8,000 →" onClick={()=>navigate(SCREENS.DASHBOARD)}/>
+          <div style={{textAlign:'center',marginTop:12}}><span className="pressable" onClick={goBack} style={{fontSize:14,color:CZ.textMd,cursor:'pointer'}}>No thanks, I'll come back later →</span></div>
+        </Card>
+      </div>
+      <AICard message="Your limit will grow as you build repayment history with CredZo. Many users reach ₹50,000+ within 6 months." style={{marginBottom:12}}/>
+    </div>
+    <HomeIndicator/>
+  </Screen>;
+}
+function RejectionScreen(){
+  const {goBack}=useNav();
+  return <Screen className="screen-enter">
+    <StatusBar/><NavBar step={3} total={3} onBack={goBack}/>
+    <div className="scroll-hidden" style={{flex:1,overflowY:'auto'}}>
+      <div style={{textAlign:'center',padding:'8px 28px 16px'}}>
+        <div style={{width:80,height:80,margin:'0 auto 14px',borderRadius:20,background:CZ.subtle,border:`1.5px dashed ${CZ.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:32,animation:'czSlideUp .4s ease'}}>🤝</div>
+        <h2 style={{fontSize:24,fontWeight:800,color:CZ.navy,lineHeight:1.2,margin:'0 0 10px',letterSpacing:-.4}}>Not quite yet — but here's your path.</h2>
+        <p style={{fontSize:14,color:CZ.textMd,lineHeight:1.6,margin:0}}>We couldn't approve a credit line today based on your current profile. Here's what you can do.</p>
+      </div>
+      <div style={{margin:'0 20px 10px'}}><Card style={{padding:'14px 16px'}}>
+        <div style={{fontSize:11,fontWeight:700,color:CZ.muted,textTransform:'uppercase',letterSpacing:.6,marginBottom:8}}>Why this happened</div>
+        <p style={{fontSize:13.5,color:CZ.text,lineHeight:1.6,margin:0}}>Your credit score didn't meet our minimum threshold this time. This is not permanent — many factors can be improved.</p>
+      </Card></div>
+      <div style={{margin:'0 20px 10px'}}><Card style={{overflow:'hidden',padding:0}}>
+        <div style={{padding:'10px 16px',borderBottom:`1px solid ${CZ.border}`,background:CZ.subtle}}><span style={{fontSize:14,fontWeight:700,color:CZ.text}}>Next steps</span></div>
+        {[{icon:'📊',label:'Check your free credit score'},{icon:'📅',label:'Try again in 30 days'},{icon:'💬',label:'Talk to our team'}].map((s,i)=><div key={i} className="pressable" style={{display:'flex',alignItems:'center',padding:'14px 16px',borderBottom:i<2?`1px solid ${CZ.border}`:'none',cursor:'pointer'}}>
+          <div style={{width:36,height:36,borderRadius:10,background:CZ.navyLight,border:`1px solid ${CZ.navyBorder}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,marginRight:12,flexShrink:0}}>{s.icon}</div>
+          <span style={{fontSize:14,color:CZ.navyMid,fontWeight:600,flex:1}}>{s.label}</span>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M7 5l4 4-4 4" stroke={CZ.muted} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </div>)}
+      </Card></div>
+      <AICard message="This is not a reflection of your financial worth. Credit scores can be improved, and we'd love to help you get there." style={{marginBottom:12}}/>
+    </div>
+    <HomeIndicator/>
+  </Screen>;
+}
+
+/* ─── AI Help Overlay ─────────────────────────────── */
+function AIHelp(){
+  const {dismissOverlay}=useNav();
+  const [exp,setExp]=React.useState('Camera not working');
+  const TILES=[{l:'Camera not working',a:'Go to phone Settings → Apps → CredZo → Permissions → Camera → Allow. Return to the app and try again.'},{l:'OTP not received',a:'Check that your Aadhaar-registered mobile number is active and has good network signal.'},{l:'What is UIDAI?',a:'UIDAI is the government body managing Aadhaar. Your Aadhaar number is never stored by CredZo.'},{l:'Is my data safe?',a:'Yes. All data uses 256-bit SSL encryption. We are an RBI-registered NBFC following strict data regulations.'}];
+  return <div style={{position:'absolute',inset:0,background:'rgba(9,22,64,.92)',display:'flex',flexDirection:'column',zIndex:100,animation:'czFadeIn .2s ease'}}>
+    <div style={{height:200,flexShrink:0,padding:'44px 24px 20px',position:'relative'}}>
+      <div style={{opacity:.12}}>
+        {[{w:'42%'},{w:'68%'},{w:'55%'},{w:'78%'}].map((l,i)=><div key={i} style={{height:i%2===0?10:7,width:l.w,background:'white',borderRadius:3,marginBottom:10}}/>)}
+      </div>
+      <div style={{position:'absolute',bottom:16,left:'50%',transform:'translateX(-50%)',whiteSpace:'nowrap',fontSize:9,color:'rgba(255,255,255,.2)',letterSpacing:1.5}}>CURRENT SCREEN (DIMMED)</div>
+    </div>
+    <div style={{flex:1,background:CZ.card,borderRadius:'28px 28px 0 0',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 -8px 40px rgba(9,22,64,.4)',animation:'czSlideUp .32s cubic-bezier(.22,1,.36,1) both'}}>
+      <div style={{display:'flex',justifyContent:'center',padding:'12px 0 8px'}}><div style={{width:40,height:4,borderRadius:2,background:CZ.border}}/></div>
+      <div style={{display:'flex',alignItems:'center',padding:'0 20px 12px',gap:10,borderBottom:`1px solid ${CZ.border}`,flexShrink:0}}>
+        <div style={{width:36,height:36,borderRadius:'50%',background:CZ.aiGrad,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 10px rgba(8,145,178,.3)'}}>
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5L9 5.5H13.5L10 8L11.5 12.5L7.5 10L3.5 12.5L5 8L1.5 5.5H6L7.5 1.5Z" fill="white" opacity=".95"/></svg>
+        </div>
+        <div style={{flex:1}}><div style={{fontSize:16,fontWeight:800,color:CZ.text,letterSpacing:-.2}}>CredZo Guide</div><div style={{fontSize:11,color:CZ.muted}}>Here to help at every step</div></div>
+        <div className="pressable" onClick={dismissOverlay} style={{width:32,height:32,borderRadius:'50%',border:`1px solid ${CZ.border}`,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16,color:CZ.muted}}>×</div>
+      </div>
+      <div style={{padding:'10px 20px 6px',flexShrink:0}}>
+        <div style={{background:CZ.tealSurface,borderRadius:12,border:`1px solid ${CZ.tealBorder}`,padding:'10px 14px'}}>
+          <p style={{fontSize:13.5,color:'#0C3540',lineHeight:1.55,margin:0}}>I noticed you might need help. Here are the most common issues and quick fixes:</p>
+        </div>
+      </div>
+      <div style={{padding:'8px 20px',flexShrink:0}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+          {TILES.map((t,i)=><div key={i} className="pressable" onClick={()=>setExp(exp===t.l?null:t.l)} style={{background:exp===t.l?CZ.navyLight:CZ.card,borderRadius:14,padding:'12px 12px',border:`1.5px solid ${exp===t.l?CZ.navyBorder:CZ.border}`,display:'flex',alignItems:'center',gap:10,cursor:'pointer',transition:'all .2s'}}>
+            <span style={{fontSize:16}}>{'🎯📱🛡️🔒'[i]}</span>
+            <span style={{fontSize:12.5,fontWeight:600,color:CZ.text,lineHeight:1.35}}>{t.l}</span>
+          </div>)}
+        </div>
+      </div>
+      {exp&&(()=>{const tile=TILES.find(t=>t.l===exp);return tile?<div className="scroll-hidden" style={{flex:1,overflow:'auto',padding:'0 20px 8px'}}>
+        <div style={{borderRadius:12,border:`1px solid ${CZ.border}`,overflow:'hidden'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 14px',background:CZ.subtle,borderBottom:`1px solid ${CZ.border}`}}>
+            <span style={{fontSize:13.5,fontWeight:700,color:CZ.text}}>{exp}</span>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M13 11L9 7L5 11" stroke={CZ.navyMid} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          <div style={{padding:'12px 14px',fontSize:13,color:CZ.textMd,lineHeight:1.6,animation:'czSlideUp .2s ease'}}>{tile.a}</div>
+        </div>
+      </div>:null})()}
+      <div style={{flex:1}}/>
+      <div style={{borderTop:`1px solid ${CZ.border}`,padding:'12px 20px',flexShrink:0}}>
+        <div style={{fontSize:12.5,color:CZ.muted,marginBottom:10,textAlign:'center'}}>Still stuck? Reach a human instantly.</div>
+        <div style={{display:'flex',gap:10}}>
+          <Button label="💬 Chat" style={{flex:1,height:48,fontSize:14}} onClick={()=>{}}/>
+          <Button variant="outline" label="📞 Call" style={{flex:1,height:48,fontSize:14}} onClick={()=>{}}/>
+        </div>
+      </div>
+      <HomeIndicator/>
+    </div>
+  </div>;
+}
+
+/* ─── App Router ──────────────────────────────────── */
+function Router(){
+  const {current,overlay,dir}=useNav();
+  const ac=dir==='back'?'screen-enter-back':'screen-enter';
+  const render=()=>{switch(current){
+    case SCREENS.WELCOME:return<WelcomeScreen key={current}/>;
+    case SCREENS.SIGN_IN:return<SignInScreen key={current}/>;
+    case SCREENS.SIGN_UP:return<SignUpScreen key={current}/>;
+    case SCREENS.OTP_VERIFY:return<OTPVerifyScreen key={current}/>;
+    case SCREENS.ELIGIBILITY:return<EligibilityScreen key={current}/>;
+    case SCREENS.AADHAAR_OTP:return<AadhaarOTPScreen key={current}/>;
+    case SCREENS.PAN_CAPTURE:return<PANCaptureScreen key={current}/>;
+    case SCREENS.PROCESSING:return<ProcessingScreen key={current}/>;
+    case SCREENS.CREDIT_REVEAL:return<CreditRevealScreen key={current}/>;
+    case SCREENS.KFS_REVIEW:return<KFSScreen key={current}/>;
+    case SCREENS.CREDIT_DRAW:return<CreditDrawScreen key={current}/>;
+    case SCREENS.DASHBOARD:return<DashboardScreen key={current}/>;
+    case SCREENS.PARTIAL:return<PartialScreen key={current}/>;
+    case SCREENS.REJECTION:return<RejectionScreen key={current}/>;
+    default:return<WelcomeScreen key="fb"/>;
+  }};
+  return(
+    <div style={{position:'relative',width:SW,height:SH}}>
+      {render()}
+      {overlay===SCREENS.AI_HELP&&<div style={{position:'absolute',inset:0,zIndex:50}}><AIHelp/></div>}
+    </div>
+  );
+}
+
+function App(){
+  return(
+    <NavProvider>
+      <div style={{minHeight:'100vh',background:CZ.heroGrad,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        {/* Phone frame */}
+        <div style={{position:'relative',borderRadius:52,padding:12,background:'linear-gradient(145deg,#2A2A2A 0%,#1A1A1A 50%,#222 100%)',boxShadow:'0 0 0 1px #333,0 32px 80px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.06)'}}>
+          {/* Dynamic Island */}
+          <div style={{position:'absolute',top:22,left:'50%',transform:'translateX(-50%)',width:120,height:34,background:'#111',borderRadius:20,zIndex:200,boxShadow:'inset 0 0 0 1px rgba(255,255,255,.06)'}}/>
+          {/* Side buttons */}
+          <div style={{position:'absolute',left:-3,top:100,width:3,height:32,background:'#444',borderRadius:'2px 0 0 2px'}}/>
+          <div style={{position:'absolute',left:-3,top:146,width:3,height:56,background:'#444',borderRadius:'2px 0 0 2px'}}/>
+          <div style={{position:'absolute',left:-3,top:214,width:3,height:56,background:'#444',borderRadius:'2px 0 0 2px'}}/>
+          <div style={{position:'absolute',right:-3,top:150,width:3,height:80,background:'#444',borderRadius:'0 2px 2px 0'}}/>
+          <div style={{borderRadius:42,overflow:'hidden',width:SW,height:SH}}><Router/></div>
+        </div>
+      </div>
+    </NavProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
